@@ -23,6 +23,8 @@ bool Game::init()
   initSpaceship();
   initAliens();
   initShots();
+  initAlienBullets();
+  initLives();
   return true;
 }
 
@@ -59,6 +61,30 @@ void Game::initSpaceship()
     window.getSize().x / 2 - spaceship.getSprite()->getGlobalBounds().width / 2,
     620);
 }
+
+//Player live
+void Game::initLives()
+{
+  playerLives = 3;
+  lifeIcons.clear();
+
+  // Load the same spaceship texture or a small icon version
+  if (!lifeIconTexture.loadFromFile("Data/Images/SpaceShooterRedux/PNG/playerShip1_blue.png"))
+  {
+    std::cerr << "Failed to load life icon texture\n";
+    return;
+  }
+
+  for (int i = 0; i < playerLives; ++i)
+  {
+    sf::Sprite icon;
+    icon.setTexture(lifeIconTexture);
+    icon.setScale(0.75f, 0.75f);
+    icon.setPosition(20 + i * 80, 650);
+    lifeIcons.push_back(icon);
+  }
+}
+
 
 // Initialize aliens in a grid formation
 void Game::initAliens()
@@ -97,7 +123,7 @@ void Game::initAliens()
     {
       if (index2 >= NUM_ALIEN_TYPE_2) break;
 
-      alien_2[index2].initialiseSprite(alien_texture, "Data/Images/Alien UFO pack/PNG/shipGreen_manned.png");
+      alien_2[index2].initialiseSprite(alien_texture, "Data/Images/Alien UFO pack/PNG/shipBeige_manned.png");
       alien_2[index2].getSprite()->setScale(0.5, 0.5);
 
       float alienWidth = alien_2[index2].getSprite()->getGlobalBounds().width;
@@ -123,7 +149,28 @@ void Game::initShots()
   {
     shots[i].initialiseSprite(bullet_texture, "Data/Images/Alien UFO pack/PNG/laserBlue1.png");
     shots[i].getSprite()->setScale(0.25, 0.25);
-    shots[i].getSprite()->setPosition(500, 500);
+    shots[i].getSprite()->setPosition(-100, -100);
+    shots[i].setIsVisible(false);
+  }
+}
+
+void Game::initAlienBullets()
+{
+  alienBulletTexture.loadFromFile("Data/Images/Alien UFO pack/PNG/laserPink1.png");
+  for (int i = 0; i < MAX_ALIEN_BULLETS; i++)
+    {
+      alienBullets[i].initialise(alienBulletTexture, "Data/Images/Alien UFO pack/PNG/laserPink1.png");
+    }
+}
+
+void Game::initSpiralAliens()
+{
+
+  for (int i = 0; i < NUM_CENTIPEDE_SEGMENTS; ++i)
+  {
+    float delay = i * 0.15f;
+    centipede[i].initialiseSprite(alien_texture, "Data/Images/Alien UFO pack/PNG/shipBeige_manned.png", delay);
+    centipede[i].setIsVisible(true);
   }
 }
 
@@ -131,14 +178,18 @@ void Game::initShots()
 void Game::update(float dt)
 {
   if (in_countdown)
-    {
-      updateCountdown(dt);
-      return;
-    }
+  {
+    updateCountdown(dt);
+    return; // only run countdown until finished
+  }
+
+  if (!in_game) return;
+
   checkWinCondition();
   spaceship.outofbound(window);
   updateAliens(dt);
   updateShots(dt);
+  updateAlienBullets(dt);
 }
 
 // Check if all aliens are destroyed
@@ -164,11 +215,32 @@ void Game::checkWinCondition()
 
   if (allAliensGone)
   {
-    std::cout << "All aliens gone! You won!" << std::endl;
-    game_over1 = true;
-    in_game = false;
-    player_won = true;
-    game_over.setWin(true);
+    bool centipedeActive = false;
+    for (int i = 0; i < NUM_CENTIPEDE_SEGMENTS; ++i)
+    {
+      if (centipede[i].isVisible())
+      {
+        centipedeActive = true;
+        break;
+      }
+    }
+
+    if (!centipedeActive && !centipedeLaunched)
+    {
+      centipedeLaunched = true;
+      centipedeClock.restart();
+      initSpiralAliens();
+      std::cout << "Centipede wave started!" << std::endl;
+    }
+    else if (!centipedeActive && centipedeLaunched)
+    {
+      // All enemies including centipede are dead — game is won
+      std::cout << "All enemies defeated!" << std::endl;
+      game_over1 = true;
+      in_game = false;
+      player_won = true;
+      game_over.setWin(true);
+    }
   }
 }
 
@@ -211,50 +283,106 @@ void Game::updateAliens(float dt)
       {
         shots[j].setIsVisible(false);
         alien[i].setIsVisible(false);
+        score.increase(10);
       }
     }
 
     if (alien[i].getSprite()->getGlobalBounds().intersects(spaceship.getSprite()->getGlobalBounds()))
     {
-      game_over1 = true;
-      in_game = false;
-      player_won = false;
-      game_over.setWin(false);
+      playerLives--;
+
+      if (!lifeIcons.empty())
+        lifeIcons.pop_back();
+
+      if (playerLives <= 0) {
+        game_over1 = true;
+        in_game = false;
+        player_won = false;
+        game_over.setWin(false);
+      }
     }
   }
 
   bool shouldReverse2 = false;
-  for (int k = 0; k < NUM_ALIEN_TYPE_2; k++) {
-    if (!alien_2[k].isVisible()) continue;
-    if (alien_2[k].checkwallcollision(window)) {
-      shouldReverse2 = true;
-      break;
-    }
+  for (int k = 0; k < NUM_ALIEN_TYPE_2; k++)
+    {
+      if (!alien_2[k].isVisible())
+        {
+          continue;
+        }
+
+    if (alien_2[k].checkwallcollision(window))
+      {
+        shouldReverse2 = true;
+        break;
+      }
   }
 
   // Update position and handle collisions for type 2 aliens
-  for (int k = 0; k < NUM_ALIEN_TYPE_2; k++) {
-    if (!alien_2[k].isVisible()) continue;
+  for (int k = 0; k < NUM_ALIEN_TYPE_2; k++)
+   {
+     if (!alien_2[k].isVisible())
+       {
+         continue;
+       }
 
-    if (shouldReverse2)
+     if (shouldReverse2)
+     {
+       alien_2[k].setDirection_x(-alien_2[k].getDirection_x());
+       alien_2[k].getSprite()->move(0, 10.0f);
+     }
+
+     alien_2[k].getSprite()->move(alien_2[k].getDirection_x() * alien_2[k].getSpeed() * dt, 0);
+
+     for (int j = 0; j < no_of_shot; j++)
+     {
+       if (shots[j].isVisible() && alien_2[k].isVisible() &&
+         shots[j].getSprite()->getGlobalBounds().intersects(alien_2[k].getSprite()->getGlobalBounds()))
+       {
+         shots[j].setIsVisible(false);
+         alien_2[k].setIsVisible(false);
+         score.increase(10);
+       }
+     }
+
+     if (alien_2[k].getSprite()->getGlobalBounds().intersects(spaceship.getSprite()->getGlobalBounds()))
+     {
+       playerLives--;
+
+       if (!lifeIcons.empty())
+         lifeIcons.pop_back();
+
+       if (playerLives <= 0) {
+         game_over1 = true;
+         in_game = false;
+         player_won = false;
+         game_over.setWin(false);
+       }
+     }
+  }
+  //update spiral alien
+  float globalTime = centipedeClock.getElapsedTime().asSeconds();
+  for (int i = 0; i < NUM_CENTIPEDE_SEGMENTS; ++i)
+  {
+    if (centipede[i].isVisible())
+      centipede[i].update(globalTime);
+  }
+  for (int i = 0; i < NUM_CENTIPEDE_SEGMENTS; ++i)
+  {
+    if (!centipede[i].isVisible()) continue;
+
+    for (int j = 0; j < no_of_shot; ++j)
     {
-      alien_2[k].setDirection_x(-alien_2[k].getDirection_x());
-      alien_2[k].getSprite()->move(0, 10.0f);
-    }
-
-    alien_2[k].getSprite()->move(alien_2[k].getDirection_x() * alien_2[k].getSpeed() * dt, 0);
-
-    for (int j = 0; j < no_of_shot; j++)
-    {
-      if (shots[j].isVisible() && alien_2[k].isVisible() &&
-          shots[j].getSprite()->getGlobalBounds().intersects(alien_2[k].getSprite()->getGlobalBounds()))
+      if (shots[j].isVisible() &&
+          shots[j].getSprite()->getGlobalBounds().intersects(centipede[i].getSprite()->getGlobalBounds()))
       {
+        centipede[i].setIsVisible(false);
         shots[j].setIsVisible(false);
-        alien_2[k].setIsVisible(false);
+        score.increase(15); // e.g., slightly more for centipede segments
       }
     }
 
-    if (alien_2[k].getSprite()->getGlobalBounds().intersects(spaceship.getSprite()->getGlobalBounds()))
+    if (centipede[i].getSprite()->getGlobalBounds().intersects(spaceship.getSprite()->getGlobalBounds()))
     {
       game_over1 = true;
       in_game = false;
@@ -280,30 +408,79 @@ void Game::updateShots(float dt)
   }
 }
 
+//Update AlienBullets
+void Game::updateAlienBullets(float dt) {
+  // Move bullets
+  for (int i = 0; i < MAX_ALIEN_BULLETS; ++i)
+    alienBullets[i].update(dt);
+
+  // Check collisions with player
+  for (int i = 0; i < MAX_ALIEN_BULLETS; ++i) {
+    if (alienBullets[i].isVisible() &&
+    alienBullets[i].getSprite()->getGlobalBounds().intersects(spaceship.getSprite()->getGlobalBounds())) {
+
+      alienBullets[i].setVisible(false);
+      playerLives--;
+
+      if (!lifeIcons.empty())
+        lifeIcons.pop_back();
+
+      if (playerLives <= 0) {
+        game_over1 = true;
+        in_game = false;
+        player_won = false;
+        game_over.setWin(false);
+      }
+    }
+  }
+
+  // Alien shooting timer
+  if (alienShootClock.getElapsedTime().asSeconds() >= alienShootInterval) {
+    alienShootClock.restart();
+
+    // Pick a random alien to shoot
+    std::vector<Alien*> shooters;
+    for (int i = 0; i < NUM_ALIEN_TYPE_1; ++i)
+      if (alien[i].isVisible()) shooters.push_back(&alien[i]);
+    for (int i = 0; i < NUM_ALIEN_TYPE_2; ++i)
+      if (alien_2[i].isVisible()) shooters.push_back(&alien_2[i]);
+
+    if (!shooters.empty()) {
+      Alien* shooter = shooters[rand() % shooters.size()];
+      for (int i = 0; i < MAX_ALIEN_BULLETS; ++i) {
+        if (!alienBullets[i].isVisible()) {
+          alienBullets[i].getSprite()->setPosition(
+            shooter->getSprite()->getPosition().x + shooter->getSprite()->getGlobalBounds().width / 2,
+            shooter->getSprite()->getPosition().y + shooter->getSprite()->getGlobalBounds().height);
+          alienBullets[i].setVisible(true);
+          break;
+        }
+      }
+    }
+  }
+}
+
 // Update countdown timer before game starts
 void Game::updateCountdown(float dt)
 {
-  if (in_countdown)
+  float elapsed = countdownClock.getElapsedTime().asSeconds();
+
+  if (elapsed >= 1.0f)
   {
-    float elapsed = countdownClock.getElapsedTime().asSeconds();
+    countdownValue--;
+    countdownClock.restart();
 
-    if (elapsed >= 1.0f)
+    if (countdownValue <= 0)
     {
-      countdownValue--;
-      countdownClock.restart();
-
-      if (countdownValue <= 0)
-      {
-        in_countdown = false;
-        in_game = true;
-      }
-      else
-      {
-        countdownText.setString(std::to_string(countdownValue));
-        countdownText.setPosition(
-            window.getSize().x / 2 - countdownText.getGlobalBounds().width / 2,
-            window.getSize().y / 2 - countdownText.getGlobalBounds().height / 2);
-      }
+      in_countdown = false;
+      in_game = true; // Move this here, after countdown ends
+    }
+    else
+    {
+      countdownText.setString(std::to_string(countdownValue));
+      countdownText.setPosition(
+        window.getSize().x / 2 - countdownText.getGlobalBounds().width / 2,
+        window.getSize().y / 2 - countdownText.getGlobalBounds().height / 2);
     }
   }
 }
@@ -322,6 +499,9 @@ void Game::render()
   else if (in_game)
   {
     window.draw(*spaceship.getSprite());
+    score.render(window);
+    for (const auto& icon : lifeIcons)
+      window.draw(icon);
     for (int i = 0; i < no_of_shot; i++)
     {
       if (shots[i].isVisible())
@@ -344,6 +524,15 @@ void Game::render()
         window.draw(*alien_2[k].getSprite());
       }
     }
+    for (int i = 0; i < NUM_CENTIPEDE_SEGMENTS; ++i)
+    {
+      if (centipede[i].isVisible())
+        window.draw(*centipede[i].getSprite());
+    }
+    for (int i = 0; i < MAX_ALIEN_BULLETS; ++i)
+      {
+        alienBullets[i].render(window);
+      }
   }
   else if (game_over1)
   {
@@ -355,7 +544,10 @@ void Game::render()
 // Handle keyboard input
 void Game::keyPressed(sf::Event event)
 {
-  if (event.key.code == sf::Keyboard::Enter)
+  if (in_countdown) {
+    return;
+  }
+  if (event.key.code == sf::Keyboard::Enter && in_menu)
   {
     in_menu = false;
     in_countdown = true;
@@ -363,7 +555,6 @@ void Game::keyPressed(sf::Event event)
     initCountdownText();
     countdownClock.restart();
   }
-
   if (game_over1)
   {
     if (!game_over.isFinished())
@@ -424,7 +615,9 @@ void Game::resetGame()
   in_game = false;
   in_countdown = false;
   countdownValue = 3;
+  centipedeLaunched = false;
+  playerLives = 3;
   game_over.reset();
 
-  init(); // reinitialize the whole game
+  init(); // reinitialize game state
 }

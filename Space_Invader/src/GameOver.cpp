@@ -75,6 +75,27 @@ void Gameover::setWin(bool playerWon)
   win = playerWon;
 }
 
+// Return whether the player confirmed an option
+bool Gameover::isFinished() const
+{
+  return finished;
+}
+
+// Return selected option (true = Yes, false = No)
+bool Gameover::getOption() const
+{
+  return option;
+}
+
+// Reset the game over menu state
+void Gameover::reset()
+{
+  finished = false;
+  option = true;
+  win = false;
+}
+
+
 // Render game over elements to window
 void Gameover::render(sf::RenderWindow& window)
 {

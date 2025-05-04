@@ -10,7 +10,13 @@ endif()
 
 
 find_package(SFML 2.5.1 COMPONENTS system window graphics network audio)
-set(SOURCE_FILES src/main.cpp src/Game.cpp src/Game.h src/Vector2.h src/Vector2.cpp src/GameObject.h src/GameObject.cpp src/Alien.h src/Spaceship.h src/Spaceship.cpp src/Alien.cpp src/GameOver.h src/GameOver.cpp)
+set(SOURCE_FILES src/main.cpp src/Game.cpp src/Game.h src/Vector2.h src/Vector2.cpp src/GameObject.h src/GameObject.cpp src/Alien.h src/Spaceship.h src/Spaceship.cpp src/Alien.cpp src/GameOver.h src/GameOver.cpp
+        src/Score.cpp
+        src/Score.h
+        src/AlienSpiral.cpp
+        src/AlienSpiral.h
+        src/AlienBullets.cpp
+        src/AlienBullets.h)
 add_executable(SpaceInvadersSFML ${SOURCE_FILES} src/Alien.h src/Spaceship.h src/Spaceship.cpp src/GameOver.h)
 
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake_modules")
